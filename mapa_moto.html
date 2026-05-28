@@ -2,154 +2,157 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
   <title>Mapa Moto</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: Arial, sans-serif; background: #0d0d0d; color: white; height: 100vh; display: flex; flex-direction: column; }
-    #map { flex: 1; width: 100%; }
-    #panel { background: #1a1a1a; padding: 10px 12px; border-top: 1px solid #333; }
-    #info { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-    #duracion { font-size: 22px; font-weight: bold; color: #4CAF50; }
-    #distancia { font-size: 14px; color: #aaa; }
-    #llegada { font-size: 14px; color: #aaa; text-align: right; }
-    #paso-actual { font-size: 13px; color: #ddd; background: #252525; padding: 8px 10px; border-radius: 8px; border-left: 3px solid #4CAF50; min-height: 36px; }
-    #error { display: none; background: #c0392b; padding: 10px; border-radius: 8px; font-size: 13px; margin-top: 8px; text-align: center; }
+    body { background: #0d0d0d; height: 100vh; overflow: hidden; }
+    #map { width: 100%; height: 100vh; }
   </style>
 </head>
 <body>
-
-<div id="map"></div>
-
-<div id="panel">
-  <div id="info">
-    <div>
-      <div id="duracion">--</div>
-      <div id="distancia">Calculando ruta...</div>
-    </div>
-    <div id="llegada">--</div>
-  </div>
-  <div id="paso-actual">Esperando ubicación...</div>
-  <div id="error">No se pudo calcular la ruta. Verifica el destino.</div>
-</div>
+  <div id="map"></div>
 
 <script>
-  var map, directionsService, directionsRenderer, watchId;
-  var origenLat, origenLng, destinoTexto;
-  var marcadorOrigen;
+  var map, userMarker, directionsService, directionsRenderer;
+  var userLat, userLng;
 
   function initMap() {
     map = new google.maps.Map(document.getElementById('map'), {
-      zoom: 15,
+      zoom: 16,
       center: { lat: 4.4378, lng: -75.2012 },
       mapTypeId: 'roadmap',
-      disableDefaultUI: true,
+      fullscreenControl: false,
+      streetViewControl: false,
+      mapTypeControl: false,
       zoomControl: true,
-      styles: [
-        { elementType: 'geometry', stylers: [{ color: '#1a1a2e' }] },
-        { elementType: 'labels.text.fill', stylers: [{ color: '#ffffff' }] },
-        { elementType: 'labels.text.stroke', stylers: [{ color: '#1a1a2e' }] },
-        { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#2d2d44' }] },
-        { featureType: 'road.arterial', elementType: 'geometry', stylers: [{ color: '#3a3a5c' }] },
-        { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#1DB954' }] },
-        { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0d1b2a' }] },
-        { featureType: 'poi', stylers: [{ visibility: 'off' }] }
-      ]
+      gestureHandling: 'greedy'
     });
 
     directionsService = new google.maps.DirectionsService();
     directionsRenderer = new google.maps.DirectionsRenderer({
       map: map,
       suppressMarkers: false,
-      polylineOptions: { strokeColor: '#1DB954', strokeWeight: 5 }
+      polylineOptions: {
+        strokeColor: '#1A73E8',
+        strokeWeight: 6
+      }
+    });
+
+    // Barra de búsqueda nativa de Google Maps
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.placeholder = '¿A dónde vas?';
+    input.style.cssText = `
+      width: 80%;
+      padding: 12px 16px;
+      margin: 10px auto;
+      display: block;
+      border-radius: 24px;
+      border: none;
+      font-size: 16px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+      outline: none;
+      background: white;
+      color: #333;
+    `;
+    map.controls[google.maps.ControlPosition.TOP_CENTER].push(input);
+
+    var autocomplete = new google.maps.places.Autocomplete(input, {
+      componentRestrictions: { country: 'co' },
+      fields: ['geometry', 'name']
+    });
+
+    autocomplete.addListener('place_changed', function() {
+      var place = autocomplete.getPlace();
+      if (!place.geometry) return;
+      calcularRuta(place.geometry.location);
     });
 
     iniciarGPS();
   }
 
   function iniciarGPS() {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(function(pos) {
-        origenLat = pos.coords.latitude;
-        origenLng = pos.coords.longitude;
-        map.setCenter({ lat: origenLat, lng: origenLng });
+    if (!navigator.geolocation) return;
 
-        marcadorOrigen = new google.maps.Marker({
-          position: { lat: origenLat, lng: origenLng },
-          map: map,
-          title: 'Tu ubicación',
-          icon: {
-            path: google.maps.SymbolPath.CIRCLE,
-            scale: 10,
-            fillColor: '#4285F4',
-            fillOpacity: 1,
-            strokeColor: '#ffffff',
-            strokeWeight: 3
-          }
-        });
+    navigator.geolocation.getCurrentPosition(function(pos) {
+      userLat = pos.coords.latitude;
+      userLng = pos.coords.longitude;
 
-        document.getElementById('paso-actual').textContent = 'Ubicación obtenida. Ingresa tu destino en la app.';
+      map.setCenter({ lat: userLat, lng: userLng });
 
-        watchId = navigator.geolocation.watchPosition(function(p) {
-          origenLat = p.coords.latitude;
-          origenLng = p.coords.longitude;
-          if (marcadorOrigen) {
-            marcadorOrigen.setPosition({ lat: origenLat, lng: origenLng });
-          }
-          if (destinoTexto) calcularRuta();
-        }, null, { enableHighAccuracy: true, maximumAge: 5000 });
+      userMarker = new google.maps.Marker({
+        position: { lat: userLat, lng: userLng },
+        map: map,
+        title: 'Tu ubicación',
+        icon: {
+          path: google.maps.SymbolPath.CIRCLE,
+          scale: 10,
+          fillColor: '#4285F4',
+          fillOpacity: 1,
+          strokeColor: '#ffffff',
+          strokeWeight: 3
+        },
+        zIndex: 999
+      });
 
-      }, function() {
-        document.getElementById('paso-actual').textContent = 'No se pudo obtener la ubicación. Activa el GPS.';
-      }, { enableHighAccuracy: true });
-    }
+      // Actualizar posición en tiempo real
+      navigator.geolocation.watchPosition(function(p) {
+        userLat = p.coords.latitude;
+        userLng = p.coords.longitude;
+        if (userMarker) {
+          userMarker.setPosition({ lat: userLat, lng: userLng });
+        }
+      }, null, { enableHighAccuracy: true, maximumAge: 3000 });
+
+    }, null, { enableHighAccuracy: true });
   }
 
-  function calcularRuta() {
-    if (!origenLat || !destinoTexto) return;
+  function calcularRuta(destino) {
+    if (!userLat) return;
 
     directionsService.route({
-      origin: { lat: origenLat, lng: origenLng },
-      destination: destinoTexto,
+      origin: { lat: userLat, lng: userLng },
+      destination: destino,
       travelMode: google.maps.TravelMode.DRIVING,
       region: 'CO'
     }, function(result, status) {
       if (status === 'OK') {
-        document.getElementById('error').style.display = 'none';
         directionsRenderer.setDirections(result);
-
         var leg = result.routes[0].legs[0];
-        document.getElementById('duracion').textContent = leg.duration.text;
-        document.getElementById('distancia').textContent = leg.distance.text;
+
+        // Panel de info de ruta
+        var panel = document.getElementById('ruta-panel');
+        if (!panel) {
+          panel = document.createElement('div');
+          panel.id = 'ruta-panel';
+          panel.style.cssText = `
+            background: rgba(0,0,0,0.85);
+            color: white;
+            padding: 10px 16px;
+            border-radius: 12px;
+            font-size: 14px;
+            text-align: center;
+            min-width: 200px;
+          `;
+          map.controls[google.maps.ControlPosition.BOTTOM_CENTER].push(panel);
+        }
 
         var ahora = new Date();
-        var segundos = leg.duration.value;
-        ahora.setSeconds(ahora.getSeconds() + segundos);
-        var horas = ahora.getHours().toString().padStart(2, '0');
-        var minutos = ahora.getMinutes().toString().padStart(2, '0');
-        document.getElementById('llegada').textContent = 'Llegada: ' + horas + ':' + minutos;
+        ahora.setSeconds(ahora.getSeconds() + leg.duration.value);
+        var h = ahora.getHours().toString().padStart(2,'0');
+        var m = ahora.getMinutes().toString().padStart(2,'0');
 
-        var pasos = result.routes[0].legs[0].steps;
-        if (pasos.length > 0) {
-          var instruccion = pasos[0].instructions.replace(/<[^>]*>/g, '');
-          document.getElementById('paso-actual').textContent = instruccion;
-        }
-      } else {
-        document.getElementById('error').style.display = 'block';
-        document.getElementById('duracion').textContent = '--';
-        document.getElementById('distancia').textContent = 'Error calculando ruta';
-        document.getElementById('llegada').textContent = '--';
+        panel.innerHTML = `
+          <div style="font-size:22px;font-weight:bold;color:#4CAF50">${leg.duration.text}</div>
+          <div style="color:#aaa;font-size:13px">${leg.distance.text} · Llegada ${h}:${m}</div>
+        `;
       }
     });
   }
-
-  function setDestino(destino) {
-    destinoTexto = destino;
-    calcularRuta();
-  }
 </script>
 
-<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyA2KJ_X_o7HSfeM9Y6HFMq7QlmDlqpOu40&callback=initMap" async defer></script>
+<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyA2KJ_X_o7HSfeM9Y6HFMq7QlmDlqpOu40&libraries=places&callback=initMap" async defer></script>
 
 </body>
 </html>
