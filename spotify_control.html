@@ -115,7 +115,7 @@
     url.searchParams.set('code_challenge_method', 'S256');
     url.searchParams.set('code_challenge', challenge);
     // Redirige en el mismo WebViewer — funciona en App Inventor
-    window.location.href = url.toString();
+    window.AppInventor.dispatchEvent('SpotifyLogin', 'url', url.toString());
   }
 
   async function exchangeCode(code) {
