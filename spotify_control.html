@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Spotify Control</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #0d0d0d; color: white; font-family: Arial, sans-serif; height: 100vh; display: flex; flex-direction: column; }
+
+    #login-screen { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; padding: 20px; }
+    #login-btn { background: #1DB954; color: white; border: none; padding: 16px 32px; border-radius: 30px; font-size: 18px; cursor: pointer; font-weight: bold; }
+
+    #player-screen { flex: 1; display: none; flex-direction: column; padding: 12px; gap: 10px; }
+
+    .song-info { background: #1a1a1a; border-radius: 14px; padding: 14px; display: flex; align-items: center; gap: 12px; }
+    .album-art { width: 56px; height: 56px; border-radius: 8px; background: #2a2a2a; object-fit: cover; flex-shrink: 0; }
+    .song-texts { flex: 1; min-width: 0; }
+    .song-title { font-size: 16px; font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .song-artist { font-size: 13px; color: #aaa; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .song-status { font-size: 11px; color: #1DB954; margin-top: 4px; }
+
+    .progress-area { padding: 0 4px; }
+    .progress-bar { height: 4px; background: #2a2a2a; border-radius: 2px; }
+    .progress-fill { height: 4px; background: #1DB954; border-radius: 2px; width: 0%; transition: width 1s linear; }
+    .time-row { display: flex; justify-content: space-between; font-size: 11px; color: #666; margin-top: 4px; }
+
+    .controls { display: grid; grid-template-columns: 1fr 1.5fr 1fr; gap: 8px; }
+    .ctrl-btn { background: #1a1a1a; border: 0.5px solid #2a2a2a; border-radius: 14px; padding: 16px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: white; font-size: 28px; transition: background .1s; -webkit-tap-highlight-color: transparent; }
+    .ctrl-btn:active { background: #2a2a2a; transform: scale(0.95); }
+    .ctrl-btn.play { background: #1DB954; border-color: #1DB954; font-size: 32px; }
+    .ctrl-btn.play:active { background: #17a845; }
+
+    .vol-area { background: #1a1a1a; border-radius: 14px; padding: 12px 16px; }
+    .vol-label { font-size: 11px; color: #555; margin-bottom: 8px; }
+    .vol-row { display: flex; align-items: center; gap: 10px; }
+    .vol-bar { flex: 1; height: 4px; background: #2a2a2a; border-radius: 2px; position: relative; cursor: pointer; }
+    .vol-fill { height: 4px; background: #666; border-radius: 2px; width: 50%; }
+    .vol-icon { font-size: 18px; color: #555; cursor: pointer; }
+    .vol-icon:active { color: #fff; }
+
+    #error-msg { background: #c0392b; border-radius: 10px; padding: 10px; font-size: 12px; text-align: center; display: none; }
+    #connecting { text-align: center; color: #666; font-size: 13px; display: none; }
+  </style>
+</head>
+<body>
+
+<div id="login-screen">
+  <div style="font-size:40px">🎵</div>
+  <div style="font-size:18px;font-weight:bold">Conectar Spotify</div>
+  <div style="font-size:13px;color:#666;text-align:center">Toca el botón para autorizar el control de música</div>
+  <button id="login-btn" onclick="loginSpotify()">Conectar con Spotify</button>
+  <div id="connecting">Conectando...</div>
+</div>
+
+<div id="player-screen">
+  <div class="song-info">
+    <img id="album-art" class="album-art" src="" onerror="this.style.display='none'">
+    <div class="song-texts">
+      <div id="song-title" class="song-title">--</div>
+      <div id="song-artist" class="song-artist">--</div>
+      <div id="song-status" class="song-status">⏸ Pausado</div>
+    </div>
+  </div>
+
+  <div class="progress-area">
+    <div class="progress-bar"><div id="progress-fill" class="progress-fill"></div></div>
+    <div class="time-row">
+      <span id="time-current">0:00</span>
+      <span id="time-total">0:00</span>
+    </div>
+  </div>
+
+  <div class="controls">
+    <div class="ctrl-btn" onclick="prevTrack()">⏮</div>
+    <div class="ctrl-btn play" id="play-btn" onclick="togglePlay()">⏵</div>
+    <div class="ctrl-btn" onclick="nextTrack()">⏭</div>
+  </div>
+
+  <div class="vol-area">
+    <div class="vol-label">VOLUMEN</div>
+    <div class="vol-row">
+      <span class="vol-icon" onclick="setVolume(Math.max(0, currentVolume-10))">🔈</span>
+      <div class="vol-bar" onclick="handleVolClick(event)">
+        <div id="vol-fill" class="vol-fill"></div>
+      </div>
+      <span class="vol-icon" onclick="setVolume(Math.min(100, currentVolume+10))">🔊</span>
+    </div>
+  </div>
+
+  <div id="error-msg"></div>
+</div>
+
+<script>
+  const CLIENT_ID = '3f826352b00a49a091904b80a7ca81b8';
+  const REDIRECT_URI = 'https://davidprimo-ctrl.github.io/RaiderDash/callback.html';
+  const SCOPES = 'user-read-playback-state user-modify-playback-state user-read-currently-playing';
+
+  let token = null;
+  let isPlaying = false;
+  let currentVolume = 50;
+  let pollInterval = null;
+  let progressInterval = null;
+  let currentProgress = 0;
+  let currentDuration = 0;
+
+  // Revisar si ya hay token guardado
+  window.addEventListener('load', () => {
+    const saved = localStorage.getItem('spotify_token');
+    if (saved) {
+      token = saved;
+      showPlayer();
+      getCurrentTrack();
+    }
+  });
+
+  // Recibir token desde callback
+  window.addEventListener('message', (e) => {
+    if (e.data && e.data.spotify_token) {
+      token = e.data.spotify_token;
+      localStorage.setItem('spotify_token', token);
+      showPlayer();
+      getCurrentTrack();
+    }
+  });
+
+  function loginSpotify() {
+    document.getElementById('connecting').style.display = 'block';
+    const url = `https://accounts.spotify.com/authorize?client_id=${CLIENT_ID}&response_type=token&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=${encodeURIComponent(SCOPES)}&show_dialog=false`;
+    window.open(url, '_blank', 'width=500,height=600');
+  }
+
+  function showPlayer() {
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('player-screen').style.display = 'flex';
+    startPolling();
+  }
+
+  function startPolling() {
+    if (pollInterval) clearInterval(pollInterval);
+    getCurrentTrack();
+    pollInterval = setInterval(getCurrentTrack, 5000);
+  }
+
+  async function apiCall(endpoint, method = 'GET', body = null) {
+    if (!token) return null;
+    try {
+      const opts = {
+        method,
+        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
+      };
+      if (body) opts.body = JSON.stringify(body);
+      const res = await fetch(`https://api.spotify.com/v1${endpoint}`, opts);
+      if (res.status === 401) {
+        token = null;
+        localStorage.removeItem('spotify_token');
+        document.getElementById('login-screen').style.display = 'flex';
+        document.getElementById('player-screen').style.display = 'none';
+        return null;
+      }
+      if (res.status === 204 || res.status === 202) return {};
+      if (res.ok) return await res.json();
+      return null;
+    } catch(e) { return null; }
+  }
+
+  async function getCurrentTrack() {
+    const data = await apiCall('/me/player');
+    if (!data) return;
+
+    isPlaying = data.is_playing;
+    document.getElementById('play-btn').innerHTML = isPlaying ? '⏸' : '⏵';
+    document.getElementById('song-status').textContent = isPlaying ? '▶ Reproduciendo' : '⏸ Pausado';
+
+    if (data.item) {
+      document.getElementById('song-title').textContent = data.item.name;
+      document.getElementById('song-artist').textContent = data.item.artists.map(a => a.name).join(', ');
+      if (data.item.album && data.item.album.images && data.item.album.images[0]) {
+        const img = document.getElementById('album-art');
+        img.src = data.item.album.images[0].url;
+        img.style.display = 'block';
+      }
+      currentDuration = data.item.duration_ms;
+      currentProgress = data.progress_ms || 0;
+      updateProgress();
+    }
+
+    if (data.device) {
+      currentVolume = data.device.volume_percent;
+      document.getElementById('vol-fill').style.width = currentVolume + '%';
+    }
+  }
+
+  function updateProgress() {
+    if (currentDuration > 0) {
+      const pct = (currentProgress / currentDuration) * 100;
+      document.getElementById('progress-fill').style.width = pct + '%';
+      document.getElementById('time-current').textContent = msToTime(currentProgress);
+      document.getElementById('time-total').textContent = msToTime(currentDuration);
+    }
+    if (progressInterval) clearInterval(progressInterval);
+    if (isPlaying) {
+      progressInterval = setInterval(() => {
+        currentProgress = Math.min(currentProgress + 1000, currentDuration);
+        const pct = (currentProgress / currentDuration) * 100;
+        document.getElementById('progress-fill').style.width = pct + '%';
+        document.getElementById('time-current').textContent = msToTime(currentProgress);
+      }, 1000);
+    }
+  }
+
+  function msToTime(ms) {
+    const s = Math.floor(ms / 1000);
+    return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+  }
+
+  async function togglePlay() {
+    if (isPlaying) {
+      await apiCall('/me/player/pause', 'PUT');
+    } else {
+      await apiCall('/me/player/play', 'PUT');
+    }
+    setTimeout(getCurrentTrack, 300);
+  }
+
+  async function nextTrack() {
+    await apiCall('/me/player/next', 'POST');
+    setTimeout(getCurrentTrack, 500);
+  }
+
+  async function prevTrack() {
+    await apiCall('/me/player/previous', 'POST');
+    setTimeout(getCurrentTrack, 500);
+  }
+
+  async function setVolume(vol) {
+    currentVolume = vol;
+    document.getElementById('vol-fill').style.width = vol + '%';
+    await apiCall(`/me/player/volume?volume_percent=${vol}`, 'PUT');
+  }
+
+  function handleVolClick(e) {
+    const bar = e.currentTarget;
+    const rect = bar.getBoundingClientRect();
+    const pct = Math.round(((e.clientX - rect.left) / rect.width) * 100);
+    setVolume(Math.max(0, Math.min(100, pct)));
+  }
+</script>
+</body>
+</html>
