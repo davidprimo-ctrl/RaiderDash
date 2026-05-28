@@ -8,9 +8,9 @@
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { background: #0d0d0d; color: white; font-family: Arial, sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
 
-    #login-screen { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 20px; }
-    #login-btn { background: #1DB954; color: white; border: none; padding: 16px 32px; border-radius: 30px; font-size: 17px; cursor: pointer; font-weight: bold; width: 100%; max-width: 280px; }
-    #status-msg { font-size: 12px; color: #666; text-align: center; min-height: 18px; }
+    #login-screen { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 20px; }
+    #login-btn { background: #1DB954; color: white; border: none; padding: 14px 28px; border-radius: 30px; font-size: 16px; cursor: pointer; font-weight: bold; width: 100%; max-width: 260px; }
+    #status-msg { font-size: 12px; color: #666; text-align: center; min-height: 16px; }
 
     #player-screen { flex: 1; display: none; flex-direction: column; padding: 10px; gap: 8px; }
 
@@ -29,22 +29,23 @@
     .ctrl-btn { background: #1a1a1a; border: 0.5px solid #2a2a2a; border-radius: 12px; padding: 14px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: white; font-size: 26px; -webkit-tap-highlight-color: transparent; }
     .ctrl-btn:active { background: #2a2a2a; transform: scale(0.95); }
     .ctrl-btn.play { background: #1DB954; border-color: #1DB954; font-size: 30px; }
-    .ctrl-btn.play:active { background: #17a845; }
 
     .vol-area { background: #1a1a1a; border-radius: 12px; padding: 10px 14px; }
-    .vol-label { font-size: 10px; color: #555; margin-bottom: 6px; letter-spacing: .05em; }
+    .vol-label { font-size: 10px; color: #555; margin-bottom: 6px; }
     .vol-row { display: flex; align-items: center; gap: 8px; }
     .vol-bar { flex: 1; height: 4px; background: #2a2a2a; border-radius: 2px; cursor: pointer; }
     .vol-fill { height: 4px; background: #666; border-radius: 2px; pointer-events: none; }
     .vol-icon { font-size: 16px; color: #555; cursor: pointer; user-select: none; }
+
+    #logout-btn { background: none; border: 0.5px solid #333; color: #555; padding: 6px 12px; border-radius: 20px; font-size: 11px; cursor: pointer; align-self: center; }
   </style>
 </head>
 <body>
 
 <div id="login-screen">
-  <div style="font-size:38px">🎵</div>
-  <div style="font-size:17px;font-weight:bold">Conectar Spotify</div>
-  <div style="font-size:12px;color:#666;text-align:center">Autoriza el control de música para tu moto</div>
+  <div style="font-size:36px">🎵</div>
+  <div style="font-size:16px;font-weight:bold">Conectar Spotify</div>
+  <div style="font-size:12px;color:#666;text-align:center">Toca el botón para autorizar</div>
   <button id="login-btn" onclick="loginSpotify()">Conectar con Spotify</button>
   <div id="status-msg"></div>
 </div>
@@ -58,69 +59,54 @@
       <div id="song-status" class="song-status">● Conectado</div>
     </div>
   </div>
-
   <div class="progress-area">
     <div class="progress-bar"><div id="progress-fill" class="progress-fill"></div></div>
     <div class="time-row"><span id="time-current">0:00</span><span id="time-total">0:00</span></div>
   </div>
-
   <div class="controls">
     <div class="ctrl-btn" onclick="prevTrack()">⏮</div>
     <div class="ctrl-btn play" id="play-btn" onclick="togglePlay()">⏵</div>
     <div class="ctrl-btn" onclick="nextTrack()">⏭</div>
   </div>
-
   <div class="vol-area">
     <div class="vol-label">VOLUMEN</div>
     <div class="vol-row">
       <span class="vol-icon" onclick="changeVol(-10)">🔈</span>
-      <div class="vol-bar" id="vol-bar" onclick="handleVolClick(event)">
+      <div class="vol-bar" onclick="handleVolClick(event)">
         <div id="vol-fill" class="vol-fill" style="width:50%"></div>
       </div>
       <span class="vol-icon" onclick="changeVol(10)">🔊</span>
     </div>
   </div>
+  <button id="logout-btn" onclick="logout()">Desconectar</button>
 </div>
 
 <script>
   const CLIENT_ID = '3f826352b00a49a091904b80a7ca81b8';
-  const CLIENT_SECRET = 'REEMPLAZAR';
   const REDIRECT_URI = 'https://davidprimo-ctrl.github.io/RaiderDash/callback.html';
   const SCOPES = 'user-read-playback-state user-modify-playback-state user-read-currently-playing';
 
   let accessToken = null;
-  let refreshToken = null;
   let isPlaying = false;
   let currentVolume = 50;
   let progressInterval = null;
   let currentProgress = 0;
   let currentDuration = 0;
 
-  // Generar code_verifier y code_challenge para PKCE
-  function generateRandom(len) {
+  async function generatePKCE() {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
-    let result = '';
-    for (let i = 0; i < len; i++) result += chars[Math.floor(Math.random() * chars.length)];
-    return result;
-  }
-
-  async function sha256(plain) {
-    const enc = new TextEncoder().encode(plain);
+    let verifier = '';
+    for (let i = 0; i < 64; i++) verifier += chars[Math.floor(Math.random() * chars.length)];
+    const enc = new TextEncoder().encode(verifier);
     const hash = await crypto.subtle.digest('SHA-256', enc);
-    return hash;
-  }
-
-  function base64urlencode(buf) {
-    return btoa(String.fromCharCode(...new Uint8Array(buf)))
-      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+    const challenge = btoa(String.fromCharCode(...new Uint8Array(hash))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+    return { verifier, challenge };
   }
 
   async function loginSpotify() {
-    document.getElementById('status-msg').textContent = 'Abriendo Spotify...';
-    const verifier = generateRandom(64);
-    const challenge = base64urlencode(await sha256(verifier));
+    document.getElementById('status-msg').textContent = 'Redirigiendo a Spotify...';
+    const { verifier, challenge } = await generatePKCE();
     localStorage.setItem('pkce_verifier', verifier);
-
     const url = new URL('https://accounts.spotify.com/authorize');
     url.searchParams.set('client_id', CLIENT_ID);
     url.searchParams.set('response_type', 'code');
@@ -128,28 +114,20 @@
     url.searchParams.set('scope', SCOPES);
     url.searchParams.set('code_challenge_method', 'S256');
     url.searchParams.set('code_challenge', challenge);
-
-    window.open(url.toString(), '_blank', 'width=500,height=650');
+    // Redirige en el mismo WebViewer — funciona en App Inventor
+    window.location.href = url.toString();
   }
 
-  // Recibir code desde callback
-  window.addEventListener('message', async (e) => {
-    if (e.data && e.data.spotify_code) {
-      document.getElementById('status-msg').textContent = 'Obteniendo token...';
-      await exchangeCode(e.data.spotify_code);
-    }
-  });
-
   async function exchangeCode(code) {
+    document.getElementById('status-msg').textContent = 'Conectando...';
     const verifier = localStorage.getItem('pkce_verifier');
     const body = new URLSearchParams({
       grant_type: 'authorization_code',
-      code: code,
+      code,
       redirect_uri: REDIRECT_URI,
       client_id: CLIENT_ID,
       code_verifier: verifier
     });
-
     try {
       const res = await fetch('https://accounts.spotify.com/api/token', {
         method: 'POST',
@@ -159,34 +137,25 @@
       const data = await res.json();
       if (data.access_token) {
         accessToken = data.access_token;
-        if (data.refresh_token) refreshToken = data.refresh_token;
         localStorage.setItem('spotify_access_token', accessToken);
-        if (refreshToken) localStorage.setItem('spotify_refresh_token', refreshToken);
-        // Expiración en 1 hora
         localStorage.setItem('spotify_expires', Date.now() + (data.expires_in * 1000));
+        if (data.refresh_token) localStorage.setItem('spotify_refresh_token', data.refresh_token);
+        localStorage.removeItem('pkce_verifier');
         showPlayer();
       } else {
         document.getElementById('status-msg').textContent = 'Error al conectar. Intenta de nuevo.';
       }
     } catch(e) {
-      document.getElementById('status-msg').textContent = 'Error de red. Intenta de nuevo.';
+      document.getElementById('status-msg').textContent = 'Error de red.';
     }
   }
 
   async function refreshAccessToken() {
     const rt = localStorage.getItem('spotify_refresh_token');
     if (!rt) return false;
-    const body = new URLSearchParams({
-      grant_type: 'refresh_token',
-      refresh_token: rt,
-      client_id: CLIENT_ID
-    });
+    const body = new URLSearchParams({ grant_type: 'refresh_token', refresh_token: rt, client_id: CLIENT_ID });
     try {
-      const res = await fetch('https://accounts.spotify.com/api/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: body.toString()
-      });
+      const res = await fetch('https://accounts.spotify.com/api/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString() });
       const data = await res.json();
       if (data.access_token) {
         accessToken = data.access_token;
@@ -198,8 +167,18 @@
     return false;
   }
 
-  // Cargar token guardado al iniciar
   window.addEventListener('load', async () => {
+    // Revisar si venimos del callback con un code
+    const urlParams = new URLSearchParams(window.location.search);
+    const code = urlParams.get('code');
+    if (code) {
+      // Limpiar la URL
+      history.replaceState({}, '', window.location.pathname);
+      await exchangeCode(code);
+      return;
+    }
+
+    // Revisar token guardado
     const saved = localStorage.getItem('spotify_access_token');
     const expires = localStorage.getItem('spotify_expires');
     if (saved && expires && Date.now() < parseInt(expires)) {
@@ -218,25 +197,22 @@
     setInterval(getCurrentTrack, 5000);
   }
 
+  function logout() {
+    localStorage.removeItem('spotify_access_token');
+    localStorage.removeItem('spotify_refresh_token');
+    localStorage.removeItem('spotify_expires');
+    accessToken = null;
+    document.getElementById('player-screen').style.display = 'none';
+    document.getElementById('login-screen').style.display = 'flex';
+  }
+
   async function apiCall(endpoint, method = 'GET', body = null) {
     if (!accessToken) return null;
-    const expires = localStorage.getItem('spotify_expires');
-    if (expires && Date.now() > parseInt(expires) - 60000) {
-      await refreshAccessToken();
-    }
     try {
       const opts = { method, headers: { 'Authorization': `Bearer ${accessToken}` } };
       if (body) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
       const res = await fetch(`https://api.spotify.com/v1${endpoint}`, opts);
-      if (res.status === 401) {
-        const ok = await refreshAccessToken();
-        if (!ok) {
-          accessToken = null;
-          document.getElementById('login-screen').style.display = 'flex';
-          document.getElementById('player-screen').style.display = 'none';
-        }
-        return null;
-      }
+      if (res.status === 401) { await refreshAccessToken(); return null; }
       if (res.status === 204 || res.status === 202) return {};
       if (res.ok) return await res.json();
     } catch(e) {}
@@ -259,55 +235,34 @@
     currentDuration = data.item.duration_ms;
     currentProgress = data.progress_ms || 0;
     updateProgress();
-    if (data.device) {
-      currentVolume = data.device.volume_percent;
-      document.getElementById('vol-fill').style.width = currentVolume + '%';
-    }
+    if (data.device) { currentVolume = data.device.volume_percent; document.getElementById('vol-fill').style.width = currentVolume + '%'; }
   }
 
   function updateProgress() {
     if (progressInterval) clearInterval(progressInterval);
     const upd = () => {
-      if (currentDuration > 0) {
-        document.getElementById('progress-fill').style.width = (currentProgress / currentDuration * 100) + '%';
-        document.getElementById('time-current').textContent = msToTime(currentProgress);
-        document.getElementById('time-total').textContent = msToTime(currentDuration);
-      }
+      if (!currentDuration) return;
+      document.getElementById('progress-fill').style.width = (currentProgress / currentDuration * 100) + '%';
+      document.getElementById('time-current').textContent = msToTime(currentProgress);
+      document.getElementById('time-total').textContent = msToTime(currentDuration);
     };
     upd();
     if (isPlaying) progressInterval = setInterval(() => { currentProgress = Math.min(currentProgress + 1000, currentDuration); upd(); }, 1000);
   }
 
-  function msToTime(ms) {
-    const s = Math.floor(ms / 1000);
-    return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
-  }
-
-  async function togglePlay() {
-    await apiCall(isPlaying ? '/me/player/pause' : '/me/player/play', 'PUT');
-    setTimeout(getCurrentTrack, 400);
-  }
-
-  async function nextTrack() {
-    await apiCall('/me/player/next', 'POST');
-    setTimeout(getCurrentTrack, 600);
-  }
-
-  async function prevTrack() {
-    await apiCall('/me/player/previous', 'POST');
-    setTimeout(getCurrentTrack, 600);
-  }
-
+  function msToTime(ms) { const s = Math.floor(ms/1000); return Math.floor(s/60)+':'+String(s%60).padStart(2,'0'); }
+  async function togglePlay() { await apiCall(isPlaying ? '/me/player/pause' : '/me/player/play', 'PUT'); setTimeout(getCurrentTrack, 400); }
+  async function nextTrack() { await apiCall('/me/player/next', 'POST'); setTimeout(getCurrentTrack, 600); }
+  async function prevTrack() { await apiCall('/me/player/previous', 'POST'); setTimeout(getCurrentTrack, 600); }
   async function changeVol(delta) {
     currentVolume = Math.max(0, Math.min(100, currentVolume + delta));
     document.getElementById('vol-fill').style.width = currentVolume + '%';
     await apiCall(`/me/player/volume?volume_percent=${currentVolume}`, 'PUT');
   }
-
   function handleVolClick(e) {
     const rect = e.currentTarget.getBoundingClientRect();
     const pct = Math.round(((e.clientX - rect.left) / rect.width) * 100);
-    changeVol(Math.max(0, Math.min(100, pct)) - currentVolume);
+    changeVol(pct - currentVolume);
   }
 </script>
 </body>
