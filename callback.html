@@ -1,37 +1,25 @@
 <!DOCTYPE html>
-<html>
+<html lang="es">
 <head>
-  <meta charset="utf-8">
-  <title>Spotify Auth</title>
-  <style>
-    body { background: #0d0d0d; color: white; font-family: Arial; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; flex-direction: column; gap: 16px; }
-    .msg { font-size: 18px; color: #1DB954; }
-    .sub { font-size: 13px; color: #666; text-align: center; padding: 0 20px; }
-    .code-box { background: #1a1a1a; border: 1px solid #333; border-radius: 10px; padding: 12px 20px; font-size: 13px; color: #aaa; word-break: break-all; max-width: 400px; text-align: center; }
-  </style>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <title>Redirecting...</title>
 </head>
-<body>
-<script>
-  const params = new URLSearchParams(window.location.search);
-  const code = params.get('code');
-  const error = params.get('error');
+<body style="background-color: #0d0d0d;">
+    <script>
+        // Captura el código que envía Spotify
+        const urlParams = new URLSearchParams(window.location.search);
+        const code = urlParams.get('code');
+        
+        // CORRECCIÓN: Apunta exactamente a tu archivo real
+        const FINAL_URL = 'https://davidprimo-ctrl.github.io/RaiderDash/gemini-code-1780024285318.html';
 
-  if (error) {
-    document.write('<div class="msg" style="color:#e74c3c">✗ Acceso denegado</div>');
-  } else if (code) {
-    // Guardar el code y notificar a la ventana principal
-    localStorage.setItem('spotify_code', code);
-    if (window.opener) {
-      window.opener.postMessage({ spotify_code: code }, '*');
-      document.write('<div class="msg">✓ Spotify conectado</div><div class="sub">Puedes cerrar esta ventana</div>');
-      setTimeout(() => window.close(), 2000);
-    } else {
-      // Si no hay opener, mostrar el código para copiarlo
-      document.write('<div class="msg">✓ Código obtenido</div><div class="sub">Copia este código y pégalo en la app:</div><div class="code-box">' + code + '</div>');
-    }
-  } else {
-    document.write('<div class="msg" style="color:#aaa">Esperando autorización...</div>');
-  }
-</script>
+        if (code) {
+            // Redirige pasando el código para que el window.onload lo procese
+            window.location.replace(`${FINAL_URL}?code=${code}`);
+        } else {
+            window.location.replace(FINAL_URL);
+        }
+    </script>
 </body>
 </html>
